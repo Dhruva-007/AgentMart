@@ -1,0 +1,112 @@
+#pragma version 8
+txn ApplicationID
+int 0
+==
+bnz main_l10
+txn OnCompletion
+int OptIn
+==
+bnz main_l9
+txn OnCompletion
+int CloseOut
+==
+bnz main_l8
+txna ApplicationArgs 0
+byte "deposit"
+==
+bnz main_l7
+txna ApplicationArgs 0
+byte "release"
+==
+bnz main_l6
+err
+main_l6:
+txn Sender
+byte "creator"
+app_global_get
+==
+assert
+byte "released"
+app_global_get
+int 0
+==
+assert
+byte "amount"
+app_global_get
+int 0
+>
+assert
+itxn_begin
+int pay
+itxn_field TypeEnum
+byte "receiver"
+app_global_get
+itxn_field Receiver
+byte "amount"
+app_global_get
+int 1000
+-
+itxn_field Amount
+int 1000
+itxn_field Fee
+itxn_submit
+byte "released"
+int 1
+app_global_put
+int 1
+return
+main_l7:
+global GroupSize
+int 2
+==
+assert
+gtxn 1 TypeEnum
+int pay
+==
+assert
+gtxn 1 Receiver
+global CurrentApplicationAddress
+==
+assert
+gtxn 1 Amount
+int 1000
+>=
+assert
+byte "released"
+app_global_get
+int 0
+==
+assert
+byte "depositor"
+gtxn 1 Sender
+app_global_put
+byte "amount"
+gtxn 1 Amount
+app_global_put
+int 1
+return
+main_l8:
+int 1
+return
+main_l9:
+int 1
+return
+main_l10:
+txn NumAppArgs
+int 1
+==
+assert
+byte "creator"
+txn Sender
+app_global_put
+byte "receiver"
+txna ApplicationArgs 0
+app_global_put
+byte "amount"
+int 0
+app_global_put
+byte "released"
+int 0
+app_global_put
+int 1
+return

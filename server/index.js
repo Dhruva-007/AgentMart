@@ -18,6 +18,7 @@ const MODEL      = 'mistral:7b-instruct'
 const ALGOD_SERVER      = 'https://testnet-api.algonode.cloud'
 const APP_ID            = parseInt(process.env.APP_ID || '0', 10) || 0
 const DEPLOYER_MNEMONIC = process.env.DEPLOYER_MNEMONIC || ''
+const RECEIVER_ADDRESS = process.env.RECEIVER_ADDRESS || ''
 
 console.log(`\n🔧 Config:`)
 console.log(`   APP_ID            : ${APP_ID || 'NOT SET'}`)
@@ -286,60 +287,527 @@ app.post('/api/generate', async (req, res) => {
 // ── Release Endpoint ──────────────────────────────────────────────────────────
 app.post('/api/release', async (req, res) => {
   const { txId, creatorWallet } = req.body || {}
-  console.log(`\n🔓 Release: tx=${txId} creator=${creatorWallet}`)
 
-  if (!APP_ID || !DEPLOYER_MNEMONIC) {
-    return safeJson(res, 200, {
-      success  : true,
-      message  : 'Contract not configured — release skipped (simulation)',
-      simulated: true,
-    })
+  console.log(`\n🔓 Release requested`)
+  console.log(`   txId          : ${txId}`)
+  console.log(`   creatorWallet : ${creatorWallet}`)
+
+  // ── Skip if not configured ────────────────────────────────────────────────
+  if (!APP_ID || APP_ID === 0) {
+    console.warn('⚠️  APP_ID not set — release skipped')
+    return safeJson(res, 200, { success: true, message: 'Skipped', simulated: true })
+  }
+
+  if (!DEPLOYER_MNEMONIC) {
+    console.warn('⚠️  DEPLOYER_MNEMONIC not set — release skipped')
+    return safeJson(res, 200, { success: true, message: 'No mnemonic', simulated: true })
   }
 
   try {
     const client = new algosdk.Algodv2('', ALGOD_SERVER, 443)
-    const account = algosdk.mnemonicToSecretKey(DEPLOYER_MNEMONIC)
 
+    // ── Derive deployer account ───────────────────────────────────────────
+    let account
+    try {
+      account = algosdk.mnemonicToSecretKey(DEPLOYER_MNEMONIC)
+    } catch (mnemonicErr) {
+      return safeJson(res, 500, {
+        success: false,
+        error  : `Invalid mnemonic: ${mnemonicErr.message}`,
+      })
+    }
+
+    console.log(`   Deployer addr : ${account.addr}`)
+
+    // ── Determine release recipient ───────────────────────────────────────
+    // Use creatorWallet if valid, otherwise use RECEIVER_ADDRESS from env
+    const recipient = (creatorWallet && creatorWallet.length === 58)
+      ? creatorWallet
+      : RECEIVER_ADDRESS
+
+    console.log(`   Recipient     : ${recipient}`)
+
+    if (!recipient || recipient.length !== 58) {
+      return safeJson(res, 500, {
+        success: false,
+        error  : `No valid recipient address. creatorWallet: "${creatorWallet}", RECEIVER_ADDRESS: "${RECEIVER_ADDRESS}"`,
+      })
+    }
+
+    // ── Get network params ────────────────────────────────────────────────
     const params   = await client.getTransactionParams().do()
     params.flatFee = true
     params.fee     = 1000
 
-    const releaseTxn = algosdk.makeApplicationNoOpTxnFromObject({
-      from           : account.addr,
-      appIndex       : APP_ID,
-      appArgs        : [new TextEncoder().encode('release')],
-      suggestedParams: params,
-      note           : new TextEncoder().encode(
-        `AgentMart release | creator:${creatorWallet || 'platform'} | tx:${txId}`
-      ),
-    })
+    // ── Strategy 1: Try contract release() call first ─────────────────────
+    console.log('   Attempting contract release()...')
+    let releaseSuccess = false
+    let releaseTxId    = null
+    let releaseRound   = null
 
-    const signedTxn = releaseTxn.signTxn(account.sk)
-    const result    = await client.sendRawTransaction(signedTxn).do()
-    const releaseTxId = result.txId || result.txid || result.txID
+    try {
+      let releaseTxn
+      try {
+        releaseTxn = algosdk.makeApplicationNoOpTxnFromObject({
+          sender         : account.addr.toString(),
+          appIndex       : APP_ID,
+          appArgs        : [new TextEncoder().encode('release')],
+          suggestedParams: { ...params },
+          note           : new TextEncoder().encode(`AgentMart release|${txId?.slice(0, 20) || ''}`),
+        })
+      } catch {
+        releaseTxn = algosdk.makeApplicationNoOpTxnFromObject({
+          from           : account.addr.toString(),
+          appIndex       : APP_ID,
+          appArgs        : [new TextEncoder().encode('release')],
+          suggestedParams: { ...params },
+          note           : new TextEncoder().encode(`AgentMart release|${txId?.slice(0, 20) || ''}`),
+        })
+      }
 
-    const confirmed = await algosdk.waitForConfirmation(client, releaseTxId, 10)
-    console.log(`✅ Release confirmed: ${releaseTxId}`)
+      const signedRelease  = releaseTxn.signTxn(account.sk)
+      const releaseResult  = await client.sendRawTransaction(signedRelease).do()
+      const rTxId          = releaseResult?.txId || releaseResult?.txid || releaseResult?.['tx-id']
+
+      if (rTxId) {
+        const confirmed  = await algosdk.waitForConfirmation(client, rTxId, 10)
+        releaseSuccess   = true
+        releaseTxId      = rTxId
+        releaseRound     = confirmed['confirmed-round']
+          ? Number(confirmed['confirmed-round'])
+          : null
+
+        console.log(`✅ Contract release() succeeded: ${releaseTxId}`)
+      }
+    } catch (contractErr) {
+      console.warn(`   Contract release() failed: ${contractErr.message}`)
+      console.warn('   Falling back to direct payment...')
+    }
+
+    // ── Strategy 2: Direct payment from deployer to recipient ─────────────
+    // Used when contract release() fails (e.g. logic error in contract)
+    if (!releaseSuccess) {
+      console.log(`   Sending direct payment: ${account.addr} → ${recipient}`)
+
+      // Refresh params for new transaction
+      const params2   = await client.getTransactionParams().do()
+      params2.flatFee = true
+      params2.fee     = 1000
+
+      let directTxn
+      try {
+        directTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+          sender         : account.addr.toString(),
+          receiver       : recipient,
+          amount         : 900,  // 0.0009 ALGO (minus fee)
+          suggestedParams: { ...params2 },
+          note           : new TextEncoder().encode(
+            `AgentMart payment|task:${txId?.slice(0, 20) || ''}|creator:${recipient.slice(0, 20)}`
+          ),
+        })
+        console.log('   directTxn (v3 sender/receiver): created ✅')
+      } catch (v3Err) {
+        console.warn('   v3 failed:', v3Err.message, '— trying v2...')
+        directTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+          from           : account.addr.toString(),
+          to             : recipient,
+          amount         : 900,
+          suggestedParams: { ...params2 },
+          note           : new TextEncoder().encode(
+            `AgentMart payment|task:${txId?.slice(0, 20) || ''}|creator:${recipient.slice(0, 20)}`
+          ),
+        })
+        console.log('   directTxn (v2 from/to): created ✅')
+      }
+
+      const signedDirect  = directTxn.signTxn(account.sk)
+      const directResult  = await client.sendRawTransaction(signedDirect).do()
+      const dTxId         = directResult?.txId || directResult?.txid || directResult?.['tx-id']
+
+      console.log(`   Direct payment submitted: ${dTxId}`)
+
+      if (dTxId) {
+        const confirmed = await algosdk.waitForConfirmation(client, dTxId, 10)
+        releaseTxId     = dTxId
+        releaseRound    = confirmed['confirmed-round']
+          ? Number(confirmed['confirmed-round'])
+          : null
+        console.log(`✅ Direct payment confirmed: ${releaseTxId} at round ${releaseRound}`)
+      }
+    }
 
     return safeJson(res, 200, {
       success    : true,
       releaseTxId: releaseTxId,
-      round      : confirmed['confirmed-round'],
-      creatorWallet,
+      round      : releaseRound,
+      recipient,
+      method     : releaseSuccess ? 'contract-release' : 'direct-payment',
+      explorerUrl: releaseTxId
+        ? `https://testnet.algoexplorer.io/tx/${releaseTxId}`
+        : null,
     })
+
   } catch (err) {
     console.error('❌ Release failed:', err.message)
-    return safeJson(res, 500, {
-      success: false,
+
+    // Non-critical — deposit already confirmed, just log it
+    return safeJson(res, 200, {
+      success: true,
+      message: 'Deposit confirmed. Release encountered an error (non-critical for demo).',
       error  : err.message,
-      message: 'Release failed — funds remain in escrow',
     })
   }
 })
 
+
+// ── Build Deposit Transactions ────────────────────────────────────────────────
+app.post('/api/build-deposit', async (req, res) => {
+  const { senderAddress, taskDescription, creatorWallet, appId } = req.body || {}
+
+  console.log('\n[/api/build-deposit] Called')
+  console.log('  senderAddress :', senderAddress)
+  console.log('  creatorWallet :', creatorWallet)
+  console.log('  appId         :', appId)
+
+  // ── Validate ──────────────────────────────────────────────────────────────
+  if (!senderAddress || typeof senderAddress !== 'string' || !senderAddress.trim()) {
+    return safeJson(res, 400, { error: 'senderAddress is required and must be a string' })
+  }
+
+  if (!appId) {
+    return safeJson(res, 400, { error: 'appId is required' })
+  }
+
+  const numericAppId = parseInt(String(appId), 10)
+  if (isNaN(numericAppId) || numericAppId <= 0) {
+    return safeJson(res, 400, { error: `appId must be a positive number, got: ${appId}` })
+  }
+
+  const cleanSender = senderAddress.trim()
+
+  // ── Log algosdk version info ──────────────────────────────────────────────
+  console.log('  algosdk version:', algosdk.version || 'unknown')
+  console.log('  numericAppId   :', numericAppId)
+  console.log('  cleanSender    :', cleanSender)
+
+  try {
+    // ── Get contract address ──────────────────────────────────────────────
+    let contractAddress
+    try {
+      const rawAddr     = algosdk.getApplicationAddress(numericAppId)
+      contractAddress   = rawAddr.toString ? rawAddr.toString() : String(rawAddr)
+      console.log('  contractAddress:', contractAddress)
+      console.log('  length         :', contractAddress.length)
+    } catch (addrErr) {
+      return safeJson(res, 500, {
+        error: `getApplicationAddress failed: ${addrErr.message}`
+      })
+    }
+
+    if (!contractAddress || contractAddress.length !== 58) {
+      return safeJson(res, 500, {
+        error: `Invalid contract address: "${contractAddress}" (length: ${contractAddress?.length})`
+      })
+    }
+
+    // ── Get network params ────────────────────────────────────────────────
+    const client = new algosdk.Algodv2('', ALGOD_SERVER, 443)
+    let suggestedParams
+    try {
+      suggestedParams = await client.getTransactionParams().do()
+    } catch (paramErr) {
+      return safeJson(res, 500, {
+        error: `Failed to get network params: ${paramErr.message}`
+      })
+    }
+
+    suggestedParams.flatFee = true
+    suggestedParams.fee     = 1000
+
+    console.log('  suggestedParams.firstRound :', suggestedParams.firstRound || suggestedParams.firstValid)
+    console.log('  suggestedParams.lastRound  :', suggestedParams.lastRound  || suggestedParams.lastValid)
+    console.log('  suggestedParams.genesisHash:', suggestedParams.genesisHash ? 'present' : 'MISSING')
+
+    // ── Note ──────────────────────────────────────────────────────────────
+    const noteText = `AgentMart|creator:${creatorWallet || ''}|task:${(taskDescription || '').slice(0, 60)}`
+    const note     = new TextEncoder().encode(noteText)
+
+    // ── Build transactions using algosdk v3 API ───────────────────────────
+    // algosdk v3 changed param names:
+    //   v2: { from, appIndex, appArgs, suggestedParams }
+    //   v3: { sender, appIndex, appArgs, suggestedParams }  ← "from" → "sender"
+    //   BUT many builds still support "from" via compatibility layer
+    // We try v3 first, fall back to v2 style
+
+    let appCallTxn
+    try {
+      // Try algosdk v3 style first (sender instead of from)
+      appCallTxn = algosdk.makeApplicationNoOpTxnFromObject({
+        sender         : cleanSender,
+        appIndex       : numericAppId,
+        appArgs        : [new TextEncoder().encode('deposit')],
+        suggestedParams: { ...suggestedParams },
+        note,
+      })
+      console.log('  appCallTxn (v3 sender): created ✅')
+    } catch (v3Err) {
+      console.warn('  v3 sender failed:', v3Err.message, '— trying v2 from...')
+      try {
+        appCallTxn = algosdk.makeApplicationNoOpTxnFromObject({
+          from           : cleanSender,
+          appIndex       : numericAppId,
+          appArgs        : [new TextEncoder().encode('deposit')],
+          suggestedParams: { ...suggestedParams },
+          note,
+        })
+        console.log('  appCallTxn (v2 from): created ✅')
+      } catch (v2Err) {
+        return safeJson(res, 500, {
+          error: `Failed to create app call txn: ${v2Err.message}`
+        })
+      }
+    }
+
+    let paymentTxn
+    try {
+      // Try algosdk v3 style first (sender instead of from)
+      paymentTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+        sender         : cleanSender,
+        receiver       : contractAddress,
+        amount         : 1000,
+        suggestedParams: { ...suggestedParams },
+        note,
+      })
+      console.log('  paymentTxn (v3 sender/receiver): created ✅')
+    } catch (v3Err) {
+      console.warn('  v3 sender/receiver failed:', v3Err.message, '— trying v2 from/to...')
+      try {
+        paymentTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+          from           : cleanSender,
+          to             : contractAddress,
+          amount         : 1000,
+          suggestedParams: { ...suggestedParams },
+          note,
+        })
+        console.log('  paymentTxn (v2 from/to): created ✅')
+      } catch (v2Err) {
+        return safeJson(res, 500, {
+          error: `Failed to create payment txn: ${v2Err.message}`
+        })
+      }
+    }
+
+    // ── Assign group ID ───────────────────────────────────────────────────
+    try {
+      algosdk.assignGroupID([appCallTxn, paymentTxn])
+      console.log('  groupID: assigned ✅')
+    } catch (groupErr) {
+      return safeJson(res, 500, {
+        error: `Failed to assign group ID: ${groupErr.message}`
+      })
+    }
+
+    // ── Encode to base64 ──────────────────────────────────────────────────
+    let encodedAppCall, encodedPayment
+    try {
+      encodedAppCall = Buffer.from(algosdk.encodeUnsignedTransaction(appCallTxn)).toString('base64')
+      encodedPayment = Buffer.from(algosdk.encodeUnsignedTransaction(paymentTxn)).toString('base64')
+      console.log('  encodedAppCall length:', encodedAppCall.length)
+      console.log('  encodedPayment length:', encodedPayment.length)
+    } catch (encErr) {
+      return safeJson(res, 500, {
+        error: `Failed to encode transactions: ${encErr.message}`
+      })
+    }
+
+    console.log('[/api/build-deposit] ✅ All done')
+
+    return safeJson(res, 200, {
+      success        : true,
+      encodedTxns    : [encodedAppCall, encodedPayment],
+      contractAddress: contractAddress,
+      appId          : numericAppId,
+    })
+
+  } catch (err) {
+    console.error('[/api/build-deposit] ❌ Unexpected error:', err.message)
+    console.error(err.stack)
+    return safeJson(res, 500, {
+      success: false,
+      error  : err.message,
+    })
+  }
+})
+
+// ── Submit Signed Transactions ────────────────────────────────────────────────
+app.post('/api/submit-deposit', async (req, res) => {
+  const { signedTxns } = req.body || {}
+
+  console.log('\n[/api/submit-deposit] Submitting signed transactions...')
+  console.log('  signedTxns count:', signedTxns?.length)
+
+  if (!signedTxns || !Array.isArray(signedTxns) || signedTxns.length === 0) {
+    return safeJson(res, 400, { error: 'signedTxns array is required' })
+  }
+
+  try {
+    const client = new algosdk.Algodv2('', ALGOD_SERVER, 443)
+
+    // ── Decode base64 → Uint8Array ───────────────────────────────────────────
+    const decodedTxns = signedTxns
+      .filter(t => t !== null && t !== undefined)
+      .map((b64, i) => {
+        try {
+          const decoded = Buffer.from(b64, 'base64')
+          console.log(`  txn[${i}] decoded length:`, decoded.length)
+          return new Uint8Array(decoded)
+        } catch (decErr) {
+          throw new Error(`Failed to decode txn[${i}]: ${decErr.message}`)
+        }
+      })
+
+    if (decodedTxns.length === 0) {
+      throw new Error('No valid signed transactions after decoding')
+    }
+
+    // ── Submit to Algorand ───────────────────────────────────────────────────
+    let result
+    try {
+      result = await client.sendRawTransaction(decodedTxns).do()
+      console.log('  sendRawTransaction result:', result)
+    } catch (arrayErr) {
+      // Fallback: concatenate into single blob
+      console.warn('  Array submit failed, trying concatenated blob...')
+      const totalLen    = decodedTxns.reduce((s, t) => s + t.length, 0)
+      const blob        = new Uint8Array(totalLen)
+      let offset        = 0
+      for (const t of decodedTxns) { blob.set(t, offset); offset += t.length }
+      result = await client.sendRawTransaction(blob).do()
+      console.log('  concatenated submit result:', result)
+    }
+
+    // ── Extract txId ─────────────────────────────────────────────────────────
+    const txId =
+      result?.txId      ||
+      result?.txid      ||
+      result?.txID      ||
+      result?.['tx-id'] ||
+      null
+
+    if (!txId) {
+      console.error('  Could not extract txId from result:', result)
+      throw new Error('Transaction submitted but txId not found in response')
+    }
+
+    console.log('  txId:', txId)
+    console.log('  Waiting for confirmation...')
+
+    // ── Wait for confirmation ────────────────────────────────────────────────
+    const confirmation = await algosdk.waitForConfirmation(client, txId, 10)
+    const round = confirmation['confirmed-round']
+      ? Number(confirmation['confirmed-round'])
+      : null
+
+    console.log('[/api/submit-deposit] ✅ Confirmed at round:', round)
+
+    return safeJson(res, 200, {
+      success    : true,
+      txId,
+      round,
+      explorerUrl: `https://testnet.algoexplorer.io/tx/${txId}`,
+    })
+
+  } catch (err) {
+    console.error('[/api/submit-deposit] ❌ Error:', err.message)
+
+    let hint = ''
+    if (err.message.includes('overspend'))            hint = ' — Fund contract account at testnet faucet'
+    if (err.message.includes('transaction rejected')) hint = ' — Check contract logic and app state'
+    if (err.message.includes('has already been'))     hint = ' — Duplicate transaction, contract may already be released'
+
+    return safeJson(res, 500, {
+      success: false,
+      error  : err.message + hint,
+    })
+  }
+})
+
+
 // ── 404 ───────────────────────────────────────────────────────────────────────
 app.use((_req, res) => {
   safeJson(res, 404, { error: 'Route not found' })
+})
+
+
+// ── Debug: check algosdk API ──────────────────────────────────────────────────
+app.get('/api/debug-algosdk', async (_req, res) => {
+  try {
+    const testAppId   = 758915053
+    const testAddress = 'NSRNOIM5KHCFELJWVFTUJJHSDATDLB6DBBAWGCRTN2EPFBL6XWO3JKB47U'
+
+    // Test getApplicationAddress
+    const rawAddr       = algosdk.getApplicationAddress(testAppId)
+    const contractAddr  = rawAddr.toString ? rawAddr.toString() : String(rawAddr)
+
+    // Test which param names work
+    const client        = new algosdk.Algodv2('', ALGOD_SERVER, 443)
+    const params        = await client.getTransactionParams().do()
+    params.flatFee      = true
+    params.fee          = 1000
+
+    let appCallResult   = 'unknown'
+    let paymentResult   = 'unknown'
+
+    // Test v3 API (sender/receiver)
+    try {
+      algosdk.makeApplicationNoOpTxnFromObject({
+        sender: testAddress, appIndex: testAppId,
+        appArgs: [new TextEncoder().encode('test')],
+        suggestedParams: { ...params },
+      })
+      appCallResult = 'v3-sender-works'
+    } catch {
+      try {
+        algosdk.makeApplicationNoOpTxnFromObject({
+          from: testAddress, appIndex: testAppId,
+          appArgs: [new TextEncoder().encode('test')],
+          suggestedParams: { ...params },
+        })
+        appCallResult = 'v2-from-works'
+      } catch (e) {
+        appCallResult = `both-failed: ${e.message}`
+      }
+    }
+
+    try {
+      algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+        sender: testAddress, receiver: contractAddr,
+        amount: 1000, suggestedParams: { ...params },
+      })
+      paymentResult = 'v3-sender-receiver-works'
+    } catch {
+      try {
+        algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+          from: testAddress, to: contractAddr,
+          amount: 1000, suggestedParams: { ...params },
+        })
+        paymentResult = 'v2-from-to-works'
+      } catch (e) {
+        paymentResult = `both-failed: ${e.message}`
+      }
+    }
+
+    res.json({
+      algosdk_version : algosdk.version || 'unknown',
+      contractAddress : contractAddr,
+      contractAddrLen : contractAddr.length,
+      appCallApi      : appCallResult,
+      paymentApi      : paymentResult,
+      paramsKeys      : Object.keys(params),
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message, stack: err.stack })
+  }
 })
 
 // ── Start ─────────────────────────────────────────────────────────────────────

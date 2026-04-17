@@ -1,14 +1,17 @@
 import React from 'react'
 import { NetworkId, WalletId, WalletManager, WalletProvider } from '@txnlab/use-wallet-react'
 
-// Initialize the WalletManager with supported wallets
+// ── DO NOT import algosdk here ────────────────────────────────────────────────
+// WalletManager handles all crypto internally through the wallet SDKs
+// @txnlab/use-wallet-react v4 bundles its own minimal crypto
+
 const walletManager = new WalletManager({
   wallets: [
-    WalletId.DEFLY,
     WalletId.PERA,
+    WalletId.DEFLY,
     WalletId.EXODUS,
     {
-      id: WalletId.LUTE,
+      id     : WalletId.LUTE,
       options: { siteName: 'AgentMart Lite' },
     },
   ],

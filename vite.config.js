@@ -7,35 +7,32 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target        : 'http://localhost:3001',
-        changeOrigin  : true,
-        secure        : false,
-        timeout       : 600000,   // ← 10 min — prevents ECONNRESET on slow AI
-        proxyTimeout  : 600000,   // ← 10 min — proxy waits for backend
-        configure     : (proxy) => {
-          proxy.on('error', (err, req) => {
-            console.error(`[proxy] error on ${req.url}:`, err.message)
-          })
-          proxy.on('proxyReq', (_proxyReq, req) => {
-            console.log(`[proxy] → ${req.method} ${req.url}`)
-          })
-          proxy.on('proxyRes', (proxyRes, req) => {
-            console.log(`[proxy] ← ${proxyRes.statusCode} ${req.url}`)
-          })
-        },
+        target      : 'http://localhost:3001',
+        changeOrigin: true,
+        secure      : false,
+        timeout     : 600000,
+        proxyTimeout: 600000,
       },
     },
   },
 
   define: {
-    'process.env': {},
-    global       : 'globalThis',
+    global        : 'globalThis',
+    'process.env' : {},
   },
-  resolve: {
-    alias: { buffer: 'buffer' },
-  },
+
   optimizeDeps: {
-    include     : ['algosdk', 'buffer'],
-    esbuildOptions: { target: 'esnext' },
+    include: [
+      'algosdk',
+      '@txnlab/use-wallet-react',
+      '@perawallet/connect',
+      '@blockshake/defly-connect',
+    ],
+    esbuildOptions: {
+      target : 'esnext',
+      define : {
+        global: 'globalThis',
+      },
+    },
   },
 })

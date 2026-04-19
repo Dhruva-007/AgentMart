@@ -4,62 +4,37 @@ import { useWallet } from '@txnlab/use-wallet-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Wallet, AlertCircle, Loader2, ShieldCheck } from 'lucide-react'
 import { useLockBodyScroll } from '../../hooks/useLockBodyScroll'
+import peraLogo from "../../assets/wallets/pera.svg";
+import deflyLogo from "../../assets/wallets/defly.svg";
+import exodusLogo from "../../assets/wallets/exodus.svg";
+import luteLogo from "../../assets/wallets/lute.svg";
 
 const WALLET_LOGOS = {
   pera: (
-    <svg viewBox="0 0 40 40" fill="none" className="w-full h-full">
-      <rect width="40" height="40" rx="10" fill="#FFEE55" />
-      <path
-        d="M12 28V14l8 7 8-7v14"
-        stroke="#1A1A1A"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <img src={peraLogo} alt="Pera Wallet" className="w-full h-full" />
   ),
+
   defly: (
-    <svg viewBox="0 0 40 40" fill="none" className="w-full h-full">
-      <rect width="40" height="40" rx="10" fill="#1A1AFF" />
-      <path
-        d="M10 20h20M20 10l10 10-10 10"
-        stroke="white"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <img src={deflyLogo} alt="Defly Wallet" className="w-full h-full" />
   ),
+
   exodus: (
-    <svg viewBox="0 0 40 40" fill="none" className="w-full h-full">
-      <rect width="40" height="40" rx="10" fill="#0B0B0E" />
-      <path d="M20 8l12 20H8L20 8z" fill="#8B5CF6" />
-    </svg>
+    <img src={exodusLogo} alt="Exodus Wallet" className="w-full h-full" />
   ),
+
   lute: (
-    <svg viewBox="0 0 40 40" fill="none" className="w-full h-full">
-      <rect width="40" height="40" rx="10" fill="#10B981" />
-      <circle cx="20" cy="20" r="8" stroke="white" strokeWidth="2.5" />
-      <path
-        d="M20 14v12M14 20h12"
-        stroke="white"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      />
-    </svg>
+    <img src={luteLogo} alt="Lute Wallet" className="w-full h-full" />
   ),
+
   default: (
     <svg viewBox="0 0 40 40" fill="none" className="w-full h-full">
       <rect width="40" height="40" rx="10" fill="#1e1e2e" />
-      <path
-        d="M10 20c0-5.523 4.477-10 10-10s10 4.477 10 10-4.477 10-10 10S10 25.523 10 20z"
-        stroke="#6b7280"
-        strokeWidth="2"
-      />
-      <circle cx="20" cy="20" r="4" fill="#6b7280" />
+      <rect x="9" y="14" width="22" height="15" rx="3" stroke="#6b7280" strokeWidth="1.8" />
+      <path d="M9 19h22" stroke="#6b7280" strokeWidth="1.8" />
+      <circle cx="26" cy="23" r="2" fill="#6b7280" />
     </svg>
   ),
-}
+};
 
 function getWalletLogo(walletId) {
   const id = (walletId || '').toLowerCase()

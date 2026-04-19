@@ -12,9 +12,6 @@ import {
 } from 'lucide-react'
 import { ConnectWalletModal } from './ConnectWalletModal'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
 function shortenAddress(address) {
   if (!address || address.length < 10) return address || ''
   return `${address.slice(0, 6)}...${address.slice(-4)}`
@@ -29,9 +26,6 @@ function getNetworkLabel(network) {
   return network
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ConnectWalletButton
-// ─────────────────────────────────────────────────────────────────────────────
 export function ConnectWalletButton() {
   const { activeAccount, activeNetwork, activeWallet } = useWallet()
 
@@ -41,12 +35,10 @@ export function ConnectWalletButton() {
 
   const isConnected = !!activeAccount
 
-  // Close dropdown when wallet connects/disconnects
   useEffect(() => {
     setDropdownOpen(false)
   }, [isConnected])
 
-  // Stable handlers
   const openModal  = useCallback(() => setModalOpen(true), [])
   const closeModal = useCallback(() => setModalOpen(false), [])
 
@@ -66,19 +58,11 @@ export function ConnectWalletButton() {
     }
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
-      {/*
-       * SINGLE modal instance — always in the tree.
-       * isOpen prop controls visibility via AnimatePresence inside the modal.
-       * This eliminates the bug where switching between connected/disconnected
-       * render branches would mount/unmount two different modal instances.
-       */}
       <ConnectWalletModal isOpen={modalOpen} onClose={closeModal} />
 
       {!isConnected ? (
-        /* ── Not connected: show Connect button ── */
         <motion.button
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
@@ -98,7 +82,6 @@ export function ConnectWalletButton() {
           Connect Wallet
         </motion.button>
       ) : (
-        /* ── Connected: show address button + dropdown ── */
         <div className="relative">
           <motion.button
             whileHover={{ scale: 1.02 }}
@@ -113,7 +96,6 @@ export function ConnectWalletButton() {
               transition-all duration-200
             "
           >
-            {/* Live status dot */}
             <span className="relative flex h-2 w-2 flex-shrink-0">
               <span className="
                 animate-ping absolute inline-flex h-full w-full
@@ -122,12 +104,10 @@ export function ConnectWalletButton() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
             </span>
 
-            {/* Shortened address */}
             <span className="font-mono text-xs tracking-wide">
               {shortenAddress(activeAccount.address)}
             </span>
 
-            {/* Network pill */}
             <span className="
               hidden sm:inline-flex text-[10px] font-medium
               bg-purple-500/10 text-purple-300
@@ -146,15 +126,9 @@ export function ConnectWalletButton() {
             />
           </motion.button>
 
-          {/* ── Dropdown ── */}
           <AnimatePresence>
             {dropdownOpen && (
               <>
-                {/*
-                 * Click-away catcher.
-                 * pointer-events: all (catches clicks) but does NOT block scroll
-                 * because it has no background color / opacity.
-                 */}
                 <div
                   className="fixed inset-0"
                   style={{ zIndex: 200 }}
@@ -172,7 +146,6 @@ export function ConnectWalletButton() {
                     border border-white/[0.08]
                     shadow-2xl shadow-black/50
                   "
-                  // Inline bg to guarantee it renders correctly
                   style={{
                     position: 'absolute',
                     right: 0,
@@ -188,7 +161,6 @@ export function ConnectWalletButton() {
                     overflow: 'hidden',
                   }}
                 >
-                  {/* Top accent */}
                   <div
                     style={{
                       position: 'absolute',
@@ -202,7 +174,6 @@ export function ConnectWalletButton() {
                     }}
                   />
 
-                  {/* Account info */}
                   <div
                     style={{
                       padding: '16px',
@@ -260,7 +231,6 @@ export function ConnectWalletButton() {
                       </div>
                     </div>
 
-                    {/* Full address copy row */}
                     <div
                       style={{
                         background: 'rgba(255,255,255,0.03)',
@@ -307,20 +277,7 @@ export function ConnectWalletButton() {
                     </div>
                   </div>
 
-                  {/* Actions */}
                   <div style={{ padding: '8px' }}>
-                    <DropdownItem
-                      icon={<ExternalLink size={14} />}
-                      label="View on Explorer"
-                      onClick={() => {
-                        window.open(
-                          `https://testnet.algoexplorer.io/address/${activeAccount.address}`,
-                          '_blank',
-                          'noopener,noreferrer'
-                        )
-                        setDropdownOpen(false)
-                      }}
-                    />
                     <DropdownItem
                       icon={<LogOut size={14} />}
                       label="Disconnect Wallet"
@@ -338,9 +295,6 @@ export function ConnectWalletButton() {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DropdownItem
-// ─────────────────────────────────────────────────────────────────────────────
 function DropdownItem({ icon, label, onClick, danger = false }) {
   const [hovered, setHovered] = useState(false)
 

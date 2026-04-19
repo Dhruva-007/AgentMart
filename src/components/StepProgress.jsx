@@ -33,7 +33,6 @@ const StepProgress = ({ steps, currentStep, completedSteps }) => {
               ${!isCompleted && !isCurrent ? 'border border-transparent' : ''}
             `}
           >
-            {/* Step Icon */}
             <div className={`
               relative flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-500
               ${isCompleted ? 'bg-green-500/20' : ''}
@@ -66,7 +65,6 @@ const StepProgress = ({ steps, currentStep, completedSteps }) => {
                 )}
               </AnimatePresence>
 
-              {/* Pulse ring for current step */}
               {isCurrent && (
                 <motion.div
                   className="absolute inset-0 rounded-xl border border-purple-400/30"
@@ -76,7 +74,6 @@ const StepProgress = ({ steps, currentStep, completedSteps }) => {
               )}
             </div>
 
-            {/* Step Content */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <h4 className={`text-sm font-semibold transition-colors duration-300 ${
@@ -100,7 +97,6 @@ const StepProgress = ({ steps, currentStep, completedSteps }) => {
                 {step.description}
               </p>
 
-              {/* Progress bar for current step */}
               {isCurrent && (
                 <div className="mt-2 h-1 bg-white/[0.05] rounded-full overflow-hidden">
                   <motion.div
@@ -113,7 +109,6 @@ const StepProgress = ({ steps, currentStep, completedSteps }) => {
               )}
             </div>
 
-            {/* Connection line */}
             {index < steps.length - 1 && (
               <div className={`absolute left-9 top-14 w-0.5 h-3 transition-colors duration-500 ${
                 isCompleted ? 'bg-green-500/30' : 'bg-white/[0.05]'

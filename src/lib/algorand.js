@@ -9,23 +9,16 @@ console.log('  APP_ID        :', APP_ID)
 console.log('  RECEIVER_ADDR :', RECEIVER_ADDR ? RECEIVER_ADDR.slice(0, 10) + '...' : 'NOT SET')
 console.log('  Contract ready:', APP_ID > 0 && RECEIVER_ADDR.length > 50)
 
-// ── Contract configured check ─────────────────────────────────────────────────
 export function isContractConfigured() {
   const ok = APP_ID > 0 && RECEIVER_ADDR.length > 50
   console.log('[algorand.js] isContractConfigured:', ok)
   return ok
 }
 
-// ── Explorer URL helper ───────────────────────────────────────────────────────
 export function getTxExplorerUrl(txId) {
   return `https://testnet.algoexplorer.io/tx/${txId}`
 }
 
-// ── Build deposit transaction group (via backend) ─────────────────────────────
-/**
- * Calls /api/build-deposit → backend uses algosdk in Node.js
- * Returns Uint8Array[] decoded from base64 — ready for wallet signing
- */
 export async function buildDepositTxnGroup({
   senderAddress,
   taskDescription,
@@ -79,7 +72,6 @@ export async function buildDepositTxnGroup({
   console.log('[buildDepositTxnGroup] contractAddress:', data.contractAddress)
   console.log('[buildDepositTxnGroup] encodedTxns count:', data.encodedTxns.length)
 
-  // ── Decode base64 → Uint8Array using browser-native atob ─────────────────
   const uint8Txns = data.encodedTxns.map((b64, i) => {
     try {
       const binaryStr = atob(b64)
@@ -98,16 +90,10 @@ export async function buildDepositTxnGroup({
   return uint8Txns
 }
 
-// ── Submit signed transactions (via backend) ──────────────────────────────────
-/**
- * Encodes signed Uint8Array[] to base64 and sends to /api/submit-deposit
- * Backend decodes and submits to Algorand TestNet
- */
 export async function submitSignedGroup(signedTxns) {
   console.log('\n[submitSignedGroup] Sending to backend...')
   console.log('  count:', signedTxns?.length)
 
-  // ── Encode Uint8Array → base64 using browser-native btoa ─────────────────
   const base64Txns = (signedTxns || [])
     .filter(t => t !== null && t !== undefined)
     .map((uint8arr, i) => {

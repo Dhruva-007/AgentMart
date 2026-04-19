@@ -21,7 +21,6 @@ const Navbar = () => {
             border: '1px solid rgba(255,255,255,0.07)',
           }}
         >
-          {/* Logo */}
           <motion.div
             className="flex items-center gap-3 cursor-default"
             whileHover={{ scale: 1.02 }}
@@ -35,7 +34,6 @@ const Navbar = () => {
               >
                 <Bot size={20} className="text-white" />
               </div>
-              {/* Green "online" dot */}
               <div
                 className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2"
                 style={{
@@ -59,7 +57,6 @@ const Navbar = () => {
             </div>
           </motion.div>
 
-          {/* Right: network pill + wallet button */}
           <div className="flex items-center gap-3">
             <div
               className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg"

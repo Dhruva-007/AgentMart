@@ -1,17 +1,3 @@
-"""
-AgentMart Escrow — Deployment Script
-─────────────────────────────────────
-Deploys the escrow contract to Algorand TestNet.
-
-Usage:
-  python scripts/deploy.py
-
-Before running:
-  1. Set DEPLOYER_MNEMONIC in .env
-  2. Set RECEIVER_ADDRESS in .env (where funds go on release)
-  3. Fund deployer account at: https://bank.testnet.algorand.network/
-"""
-
 import os
 import sys
 import json
@@ -30,9 +16,8 @@ from algosdk.transaction import (
 
 load_dotenv()
 
-# ── Configuration ─────────────────────────────────────────────────────────────
 ALGOD_ADDRESS = "https://testnet-api.algonode.cloud"
-ALGOD_TOKEN   = ""   # AlgoNode doesn't require token
+ALGOD_TOKEN   = "" 
 ALGOD_HEADERS = {"X-Algo-API-Token": ALGOD_TOKEN}
 
 DEPLOYER_MNEMONIC = os.getenv("DEPLOYER_MNEMONIC", "")
@@ -58,7 +43,6 @@ def compile_teal(client, teal_source):
 
 
 def deploy():
-    # ── Setup ──────────────────────────────────────────────────────────────────
     client        = get_algod_client()
     private_key   = mnemonic.to_private_key(DEPLOYER_MNEMONIC)
     deployer_addr = account.address_from_private_key(private_key)
@@ -68,8 +52,6 @@ def deploy():
     print(f"   Receiver : {RECEIVER_ADDRESS}")
     print(f"   Network  : Algorand TestNet\n")
 
-    # ── Compile contracts ──────────────────────────────────────────────────────
-    # Import and compile the PyTeal contract
     from escrow import compile_contract
     os.chdir(os.path.join(os.path.dirname(__file__), '..', 'contracts'))
     compile_contract()
@@ -83,16 +65,13 @@ def deploy():
     clear_bytes    = compile_teal(client, clear_teal)
     print(" TEAL compiled successfully")
 
-    # ── State Schema ───────────────────────────────────────────────────────────
-    global_schema = StateSchema(num_uints=2, num_byte_slices=3)  # amount, released | creator, receiver, depositor
+    global_schema = StateSchema(num_uints=2, num_byte_slices=3)  
     local_schema  = StateSchema(num_uints=0, num_byte_slices=0)
 
-    # ── Build deployment transaction ───────────────────────────────────────────
     params = client.suggested_params()
     params.flat_fee = True
-    params.fee      = 2000  # slightly higher fee for deployment
+    params.fee      = 2000  
 
-    # Pass receiver address as app argument
     receiver_bytes = [RECEIVER_ADDRESS.encode()]
 
     txn = ApplicationCreateTxn(
@@ -106,12 +85,10 @@ def deploy():
         app_args         = receiver_bytes
     )
 
-    # ── Sign and send ──────────────────────────────────────────────────────────
     signed_txn = txn.sign(private_key)
     tx_id      = client.send_transaction(signed_txn)
     print(f" Transaction submitted: {tx_id}")
 
-    # ── Wait for confirmation ──────────────────────────────────────────────────
     result = wait_for_confirmation(client, tx_id, 4)
     app_id = result["application-index"]
 
@@ -119,7 +96,6 @@ def deploy():
     print(f"   App ID  : {app_id}")
     print(f"   Tx ID   : {tx_id}")
 
-    # ── Minimum balance for contract account ───────────────────────────────────
     print(f"\n Fund the contract account to activate it:")
     from algosdk.encoding import encode_address
     from algosdk.logic import get_application_address
@@ -128,7 +104,6 @@ def deploy():
     print(f"   Fund at: https://bank.testnet.algorand.network/")
     print(f"   Minimum required: 0.1 ALGO (100,000 microALGO)\n")
 
-    # ── Save config to .env update suggestion ─────────────────────────────────
     config_output = f"""
 # ── Add these to your .env file ──────────────────────────────────────────────
 VITE_APP_ID={app_id}

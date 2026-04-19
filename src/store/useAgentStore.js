@@ -1,35 +1,45 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-// ── Get platform wallet from env ──────────────────────────────────────────────
 const PLATFORM_WALLET = import.meta.env.VITE_RECEIVER_ADDRESS || ''
 
-console.log('[useAgentStore] PLATFORM_WALLET:', PLATFORM_WALLET ? PLATFORM_WALLET.slice(0, 10) + '...' : 'NOT SET')
+if (!PLATFORM_WALLET && PLATFORM_WALLET.length === 0) {
+  console.warn('[useAgentStore] VITE_RECEIVER_ADDRESS not set in .env')
+} else if (PLATFORM_WALLET.length > 0) {
+  console.log('[useAgentStore] PLATFORM_WALLET:', PLATFORM_WALLET.slice(0, 10) + '...')
+}
 
-// ── Helper: extract creator wallet from any agent object ─────────────────────
-// Handles all possible field name variants
 export function getCreatorWallet(agent) {
   if (!agent) return ''
   const wallet =
-    agent.creatorWallet ||
-    agent.creator       ||
-    agent.creatorAddress||
-    agent.wallet        ||
+    agent.creatorWallet      ||
+    agent.creator            ||
+    agent.creatorAddress     ||
+    agent.wallet             ||
     ''
-  console.log('[getCreatorWallet] agent:', agent?.name, '→ wallet:', wallet)
-  return wallet
+  if (wallet && wallet.length !== 58) {
+    console.warn(`[getCreatorWallet] Invalid address for agent "${agent?.name}": ${wallet}`)
+  }
+  return wallet.trim()
 }
 
-// ── Default agents ────────────────────────────────────────────────────────────
-const buildDefaultAgents = () => [
+function getPlatformWallet() {
+  if (!PLATFORM_WALLET || PLATFORM_WALLET.length < 50) {
+    return 'DEMO_WALLET_FOR_TESTING_PURPOSES_ONLY_NOT_REAL'
+  }
+  return PLATFORM_WALLET
+}
+
+const DEFAULT_AGENTS = [
   {
     id           : 'default-research-001',
     name         : 'Research Analyst',
-    description  : 'Deep research and data analysis. Provides sourced insights and key findings.',
-    systemPrompt : 'You are an expert research analyst. Gather key insights, identify patterns, and present findings clearly. Be concise and structured.',
-    outputFormat : 'Use: ## Research Findings, ## Key Insights, ## Analysis, ## Recommendations. Bullet points throughout.',
-    creatorWallet: PLATFORM_WALLET,
+    description  : 'Deep research and data analysis on any topic. Provides sourced insights and key findings.',
+    promptTemplate: 'You are an expert research analyst. Gather key insights, identify patterns, and present findings clearly. Be concise and evidence-based. Always structure your response with clear sections.',
+    outputFormat : 'Use headers: ## Research Findings, ## Key Insights, ## Analysis, ## Recommendations. Use bullet points throughout.',
+    creatorWallet: getPlatformWallet(),
     creatorLabel : 'AgentMart Team',
+    price        : 0.001,
     isDefault    : true,
     createdAt    : new Date('2024-01-01').toISOString(),
     usageCount   : 142,
@@ -40,11 +50,12 @@ const buildDefaultAgents = () => [
   {
     id           : 'default-defi-002',
     name         : 'DeFi Strategist',
-    description  : 'DeFi protocols, yield optimization, liquidity analysis, and risk assessment.',
-    systemPrompt : 'You are a DeFi expert. Analyze market conditions, evaluate risks, suggest optimal strategies. Be specific with numbers where possible.',
-    outputFormat : 'Use: ## Market Overview, ## Risk Assessment, ## Strategy Recommendations, ## Execution Steps.',
-    creatorWallet: PLATFORM_WALLET,
+    description  : 'DeFi protocols, yield optimization, liquidity analysis, and risk assessment specialist.',
+    promptTemplate: 'You are a DeFi expert. Analyze market conditions, evaluate risks, and suggest optimal strategies. Be specific with numbers where possible. Always assess risk level before recommending.',
+    outputFormat : 'Use headers: ## Market Overview, ## Risk Assessment (Low/Medium/High), ## Strategy Recommendations, ## Execution Steps.',
+    creatorWallet: getPlatformWallet(),
     creatorLabel : 'DeFi Labs',
+    price        : 0.001,
     isDefault    : true,
     createdAt    : new Date('2024-01-15').toISOString(),
     usageCount   : 89,
@@ -55,11 +66,12 @@ const buildDefaultAgents = () => [
   {
     id           : 'default-code-003',
     name         : 'Smart Contract Architect',
-    description  : 'Writes and audits smart contracts for Algorand (PyTeal) and Ethereum (Solidity).',
-    systemPrompt : 'You are an expert smart contract developer. Write clean, secure, gas-optimized contracts. Always include security notes.',
-    outputFormat : 'Use: ## Contract Overview, ## Code (with code blocks), ## Security Considerations, ## Deployment Steps.',
-    creatorWallet: PLATFORM_WALLET,
+    description  : 'Writes and audits smart contracts for Algorand (PyTeal) and Ethereum (Solidity). Security-focused developer.',
+    promptTemplate: 'You are an expert smart contract developer specializing in Algorand PyTeal and Ethereum Solidity. Write clean, secure, gas-optimized contracts. Always include security considerations and testing notes.',
+    outputFormat : 'Use headers: ## Contract Overview, ## Code Implementation (with code blocks), ## Security Considerations, ## Testing Guide, ## Deployment Steps.',
+    creatorWallet: getPlatformWallet(),
     creatorLabel : 'BlockBuilders',
+    price        : 0.001,
     isDefault    : true,
     createdAt    : new Date('2024-02-01').toISOString(),
     usageCount   : 201,
@@ -70,11 +82,12 @@ const buildDefaultAgents = () => [
   {
     id           : 'default-quick-004',
     name         : 'Quick Intel Agent',
-    description  : 'Rapid research and insight generation. Delivers sharp, concise answers fast.',
-    systemPrompt : 'You are Quick Intel, a fast and precise research assistant. Deliver sharp, accurate insights with zero fluff. Short punchy sentences only.',
+    description  : 'Fast, precise answers on any topic. Delivers sharp, actionable insights with zero fluff.',
+    promptTemplate: 'You are Quick Intel, a fast and precise research assistant. Deliver sharp, accurate insights with zero fluff. Use short punchy sentences. Never over-explain.',
     outputFormat : 'Bullet points only. Bold headers for sections. Each point under 20 words.',
-    creatorWallet: PLATFORM_WALLET,
+    creatorWallet: getPlatformWallet(),
     creatorLabel : 'AgentMart Team',
+    price        : 0.001,
     isDefault    : true,
     createdAt    : new Date('2024-02-10').toISOString(),
     usageCount   : 67,
@@ -84,38 +97,61 @@ const buildDefaultAgents = () => [
   },
 ]
 
-// ── Store ─────────────────────────────────────────────────────────────────────
+const validateDefaultAgents = () => {
+  let valid = true
+  for (const agent of DEFAULT_AGENTS) {
+    if (!agent.creatorWallet || agent.creatorWallet.length < 50) {
+      console.warn(`⚠️  Default agent "${agent.name}" has invalid wallet`)
+      valid = false
+    }
+  }
+  return valid
+}
+
+validateDefaultAgents()
+
 const useAgentStore = create(
   persist(
     (set, get) => ({
-      agents       : buildDefaultAgents(),
+      agents       : DEFAULT_AGENTS,
       selectedAgent: null,
       isCreating   : false,
 
-      // ── Create a new agent ─────────────────────────────────────────────
       createAgent: (agentData) => {
-        const creatorWallet = agentData.creatorWallet || agentData.creator || ''
+        const promptTemplate =
+          agentData.promptTemplate || agentData.systemPrompt || ''
+        const outputFormat   = agentData.outputFormat || ''
+        const creatorWallet  = agentData.creatorWallet || agentData.creator || ''
 
-        console.log('[createAgent] Creating agent:', agentData.name)
-        console.log('[createAgent] creatorWallet:', creatorWallet)
+        console.log('[createAgent] Creating new agent:')
+        console.log('  Name         :', agentData.name)
+        console.log('  Prompt       :', promptTemplate.slice(0, 50))
+        console.log('  Creator      :', creatorWallet ? `${creatorWallet.slice(0, 8)}...` : '(none)')
 
         const newAgent = {
           id           : `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           name         : (agentData.name         || '').trim(),
           description  : (agentData.description  || '').trim(),
-          systemPrompt : (agentData.systemPrompt  || '').trim(),
-          outputFormat : (agentData.outputFormat  || '').trim(),
+          promptTemplate,
+          outputFormat,
           creatorWallet: creatorWallet.trim(),
           creatorLabel : (agentData.creatorLabel  || 'You').trim(),
+          price        : 0.001, 
           isDefault    : false,
           createdAt    : new Date().toISOString(),
           usageCount   : 0,
           rating       : 0,
           category     : agentData.category || 'Custom',
-          color        : agentData.color    || 'purple',
+          color        : agentData.color || 'purple',
         }
 
-        console.log('[createAgent] New agent object:', newAgent)
+        if (!newAgent.name || newAgent.name.length < 3) {
+          console.error('[createAgent] ❌ Invalid name')
+          return null
+        }
+        if (!newAgent.creatorWallet || newAgent.creatorWallet.length !== 58) {
+          console.warn(`[createAgent] ⚠️  Invalid creatorWallet: ${newAgent.creatorWallet}`)
+        }
 
         set((state) => ({
           agents       : [...state.agents, newAgent],
@@ -125,15 +161,13 @@ const useAgentStore = create(
         return newAgent
       },
 
-      // ── Select agent by ID ─────────────────────────────────────────────
       selectAgent: (agentId) => {
         const agent = get().agents.find((a) => a.id === agentId)
         if (!agent) {
           console.warn('[selectAgent] Agent not found:', agentId)
           return
         }
-        console.log('[selectAgent] Selected:', agent.name)
-        console.log('[selectAgent] creatorWallet:', agent.creatorWallet)
+        console.log('[selectAgent] Selected:', agent.name, '— Wallet:', agent.creatorWallet ? `${agent.creatorWallet.slice(0, 10)}...` : '(none)')
         set({ selectedAgent: agent })
       },
 
@@ -154,12 +188,12 @@ const useAgentStore = create(
           agents       : state.agents.filter((a) => a.id !== agentId),
           selectedAgent: state.selectedAgent?.id === agentId ? null : state.selectedAgent,
         }))
+        console.log('[deleteAgent] Removed:', agent.name)
       },
 
-      // ── Reset to defaults (call if data is corrupt) ────────────────────
       resetToDefaults: () => {
-        console.log('[useAgentStore] Resetting to defaults...')
-        set({ agents: buildDefaultAgents(), selectedAgent: null })
+        console.log('[resetToDefaults] Clearing custom agents...')
+        set({ agents: DEFAULT_AGENTS, selectedAgent: null })
       },
 
       getAllAgents : () => get().agents,
@@ -167,19 +201,34 @@ const useAgentStore = create(
       setIsCreating: (val) => set({ isCreating: val }),
     }),
     {
-      name   : 'agentmart-agents',
-      version: 3,  // ← bumped: forces clear of old corrupt cache
+      name        : 'agentmart-agents',
+      version     : 3, 
 
-      // Migration: if old data exists, reset to defaults
-      migrate: (persistedState, version) => {
-        console.log('[useAgentStore] Migrating from version', version)
-        // Any version older than 3 gets reset
-        return {
-          ...persistedState,
-          agents: buildDefaultAgents(),
-          selectedAgent: null,
+      partialize   : (state) => ({
+        agents: state.agents,
+        selectedAgent: state.selectedAgent,
+        isCreating: state.isCreating,
+      }),
+      migrate      : (persistedState, version) => {
+        console.log('[migrate] Moving from version', version)
+
+        if (version < 3) {
+          const currentAgents = persistedState.agents || []
+          const userAgents    = currentAgents.filter(a => !a.isDefault)
+
+          console.log(`[migrate] Keeping ${userAgents.length} user agents`)
+
+          return {
+            ...persistedState,
+            agents    : [...DEFAULT_AGENTS, ...userAgents],
+            selectedAgent: persistedState.selectedAgent,
+            isCreating: persistedState.isCreating,
+          }
         }
+
+        return persistedState
       },
+      skipHydration: false,
     }
   )
 )

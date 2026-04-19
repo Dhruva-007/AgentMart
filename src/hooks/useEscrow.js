@@ -1,10 +1,3 @@
-/**
- * useEscrow.js
- *
- * FIXED: Removed isValidAlgorandAddress import (no longer in algorand.js)
- * Transaction building moved to backend — no algosdk in browser
- */
-
 import { useCallback, useState } from 'react'
 import { useWallet } from '@txnlab/use-wallet-react'
 import {
@@ -15,12 +8,9 @@ import {
   RECEIVER_ADDR,
 } from '../lib/algorand.js'
 
-// ── Simple browser-safe address validator ─────────────────────────────────────
-// Does NOT use algosdk — just checks length and character set
 function isValidAlgorandAddress(address) {
   if (!address || typeof address !== 'string') return false
   const cleaned = address.trim()
-  // Algorand addresses are exactly 58 chars, uppercase base32 (A-Z, 2-7)
   return cleaned.length === 58 && /^[A-Z2-7]{58}$/.test(cleaned)
 }
 
@@ -33,7 +23,6 @@ export function useEscrow() {
     async (taskDescription, creatorWallet) => {
       setDepositError(null)
 
-      // ── Debug logs ───────────────────────────────────────────────────────
       console.log('\n[useEscrow] executeDeposit called')
       console.log('  taskDescription:', taskDescription?.slice(0, 50))
       console.log('  creatorWallet  :', creatorWallet)
@@ -42,14 +31,12 @@ export function useEscrow() {
       console.log('  RECEIVER_ADDR  :', RECEIVER_ADDR)
       console.log('  isContractConfigured:', isContractConfigured())
 
-      // ── Guard: wallet connected ──────────────────────────────────────────
       if (!activeAccount?.address) {
         const err = 'Wallet not connected. Please connect your wallet first.'
         setDepositError(err)
         throw new Error(err)
       }
 
-      // ── Log creator wallet status ────────────────────────────────────────
       if (!creatorWallet) {
         console.warn('[useEscrow] creatorWallet is empty — using RECEIVER_ADDR')
       } else if (!isValidAlgorandAddress(creatorWallet)) {
@@ -59,7 +46,6 @@ export function useEscrow() {
         console.log('[useEscrow] creatorWallet is valid ✅')
       }
 
-      // ── Simulation fallback if contract not deployed ─────────────────────
       if (!isContractConfigured()) {
         console.warn('[useEscrow] Contract not configured → SIMULATION MODE')
         const simId = `SIM_${Date.now()}_${Math.random()
@@ -78,7 +64,6 @@ export function useEscrow() {
       setIsDepositing(true)
 
       try {
-        // ── Build txns via backend (algosdk runs in Node.js, not browser) ──
         console.log('[useEscrow] Calling buildDepositTxnGroup (backend)...')
 
         const encodedTxns = await buildDepositTxnGroup({
@@ -90,7 +75,6 @@ export function useEscrow() {
 
         console.log('[useEscrow] encodedTxns received:', encodedTxns.length)
 
-        // ── Sign with wallet ─────────────────────────────────────────────
         console.log('[useEscrow] Requesting wallet signature...')
         console.log('  signTransactions (hook)  :', typeof signTransactions)
         console.log('  activeWallet.signTxns    :', typeof activeWallet?.signTransactions)
@@ -110,7 +94,6 @@ export function useEscrow() {
         console.log('[useEscrow] Wallet signed ✅')
         console.log('  signedTxns count:', signedTxns?.length)
 
-        // ── Submit via backend ───────────────────────────────────────────
         console.log('[useEscrow] Submitting to Algorand via backend...')
         const result = await submitSignedGroup(signedTxns)
 

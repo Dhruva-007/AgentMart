@@ -2,11 +2,6 @@ import React from 'react'
 import { motion } from 'framer-motion'
 import { Wallet, Shield, Link, Clock, Copy, CheckCheck, ExternalLink } from 'lucide-react'
 
-/**
- * CRITICAL FIX:
- * Use real wallet state from @txnlab/use-wallet-react.
- * Old version read from Zustand store (mock state).
- */
 import { useWallet } from '@txnlab/use-wallet-react'
 
 import GlassCard from './GlassCard.jsx'
@@ -39,7 +34,6 @@ const WalletSection = () => {
     return network
   }
 
-  // ── Not connected (shouldn't render — Dashboard guards with isWalletConnected)
   if (!isWalletConnected) {
     return (
       <GlassCard className="text-center py-12" delay={0.1}>
@@ -59,10 +53,8 @@ const WalletSection = () => {
     )
   }
 
-  // ── Connected state ──
   return (
     <GlassCard hover glowColor="green" delay={0.1}>
-      {/* Card header */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-center">
@@ -76,13 +68,11 @@ const WalletSection = () => {
         <StatusBadge status="connected" label="Verified" />
       </div>
 
-      {/* Details rows */}
       <div className="space-y-3">
-        {/* Address */}
         <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/[0.04]">
           <div className="flex items-center gap-2">
-            <Link size={14} className="text-dark-300" />
-            <span className="text-xs text-dark-400">Address</span>
+            <Link size={14} className="text-white/50" />
+            <span className="text-xs text-white/80">Address</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm font-mono font-medium text-dark-100">
@@ -97,38 +87,23 @@ const WalletSection = () => {
                 ? <CheckCheck size={14} className="text-green-400" />
                 : <Copy size={14} />}
             </button>
-            <button
-              onClick={() =>
-                window.open(
-                  `https://testnet.algoexplorer.io/address/${activeAccount.address}`,
-                  '_blank',
-                  'noopener,noreferrer'
-                )
-              }
-              className="text-dark-400 hover:text-dark-200 transition-colors"
-              aria-label="View on explorer"
-            >
-              <ExternalLink size={12} />
-            </button>
           </div>
         </div>
 
-        {/* Network */}
         <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/[0.04]">
           <div className="flex items-center gap-2">
-            <Shield size={14} className="text-dark-300" />
-            <span className="text-xs text-dark-400">Network</span>
+            <Shield size={14} className="text-white/50" />
+            <span className="text-xs text-white/80">Network</span>
           </div>
           <span className="text-sm font-mono font-medium text-dark-100">
             {getNetworkLabel(activeNetwork)}
           </span>
         </div>
 
-        {/* Session */}
         <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/[0.04]">
           <div className="flex items-center gap-2">
-            <Clock size={14} className="text-dark-300" />
-            <span className="text-xs text-dark-400">Session</span>
+            <Clock size={14} className="text-white/50" />
+            <span className="text-xs text-white/80">Session</span>
           </div>
           <span className="text-sm font-medium text-dark-100">Active</span>
         </div>

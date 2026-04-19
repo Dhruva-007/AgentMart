@@ -47,12 +47,10 @@ const useStore = create((set, get) => ({
   submitTask: async (executeDeposit, selectedAgent, onSuccess) => {
     const { taskInput } = get()
 
-    // ── Debug: log what we received ──────────────────────────────────────
     console.log('\n[submitTask] Called with:')
     console.log('  taskInput    :', taskInput?.slice(0, 50))
     console.log('  selectedAgent:', JSON.stringify(selectedAgent, null, 2))
 
-    // ── Guards ────────────────────────────────────────────────────────────
     if (!taskInput?.trim()) {
       console.warn('[submitTask] No task input')
       return
@@ -63,7 +61,6 @@ const useStore = create((set, get) => ({
       return
     }
 
-    // ── Extract creator wallet with full fallback chain ───────────────────
     const creatorWallet =
       selectedAgent.creatorWallet   ||
       selectedAgent.creator         ||
@@ -74,7 +71,6 @@ const useStore = create((set, get) => ({
 
     console.log('[submitTask] Resolved creatorWallet:', creatorWallet)
 
-    // ── Reset state ───────────────────────────────────────────────────────
     set({
       isProcessing     : true,
       processingError  : null,
@@ -92,23 +88,14 @@ const useStore = create((set, get) => ({
       executedAgentName: selectedAgent.name,
     })
 
-    // ════════════════════════════════════════════════════════════════
-    // STEP 1 — Task Received
-    // ════════════════════════════════════════════════════════════════
     set({ currentStep: 0 })
     await delay(agentSteps[0].duration)
     set({ stepsCompleted: [0] })
 
-    // ════════════════════════════════════════════════════════════════
-    // STEP 2 — Research Agent
-    // ════════════════════════════════════════════════════════════════
     set({ currentStep: 1 })
     await delay(agentSteps[1].duration)
     set({ stepsCompleted: [0, 1] })
 
-    // ════════════════════════════════════════════════════════════════
-    // STEP 3 — Payment Agent (BLOCKS until confirmed or fails)
-    // ════════════════════════════════════════════════════════════════
     set({ currentStep: 2 })
     console.log('[submitTask] Calling executeDeposit with creatorWallet:', creatorWallet)
 
@@ -123,14 +110,11 @@ const useStore = create((set, get) => ({
         processingError: txErr.message,
         currentStep   : -1,
       })
-      return // ← DO NOT call AI if payment failed
+      return
     }
 
     set({ stepsCompleted: [0, 1, 2] })
 
-    // ════════════════════════════════════════════════════════════════
-    // STEP 4 — Content Agent (AI — only runs after payment confirmed)
-    // ════════════════════════════════════════════════════════════════
     set({ currentStep: 3 })
     console.log('[submitTask] Payment confirmed. Now calling AI...')
 
@@ -144,7 +128,6 @@ const useStore = create((set, get) => ({
         isProcessing  : false,
         processingError: aiErr.message,
         currentStep   : -1,
-        // Still show the tx even if AI fails
         transactionId : txResult.txId,
         transactionRound: txResult.round || null,
         explorerUrl   : txResult.explorerUrl || null,
@@ -158,19 +141,14 @@ const useStore = create((set, get) => ({
 
     set({ stepsCompleted: [0, 1, 2, 3], generationMetadata: aiResult.metadata })
 
-    // ════════════════════════════════════════════════════════════════
-    // STEP 5 — Verification Agent
-    // ════════════════════════════════════════════════════════════════
     set({ currentStep: 4 })
     await delay(agentSteps[4].duration)
     set({ stepsCompleted: [0, 1, 2, 3, 4] })
 
-    // ── Trigger backend release (non-blocking) ────────────────────────
     triggerBackendRelease(txResult.txId, creatorWallet).catch((e) =>
       console.warn('[submitTask] Release non-critical error:', e.message)
     )
 
-    // ── Show output ───────────────────────────────────────────────────
     await delay(300)
     set({
       aiOutput   : aiResult.result || aiResult.output,
@@ -178,7 +156,6 @@ const useStore = create((set, get) => ({
       isProcessing: false,
     })
 
-    // ── Show transaction ──────────────────────────────────────────────
     await delay(600)
     set({
       transactionId    : txResult.txId,
@@ -215,17 +192,14 @@ const useStore = create((set, get) => ({
   clearError: () => set({ processingError: null }),
 }))
 
-// ── API helpers ───────────────────────────────────────────────────────────────
 async function callAIBackend(task, agent) {
-  console.log('[callAIBackend] Calling /api/generate...')
-
   let response
   try {
-    response = await fetch('/api/generate', {
+    response = await fetch('/api/execute', {
       method : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body   : JSON.stringify({ task, agent }),
-      signal : AbortSignal.timeout(600_000),
+      signal : AbortSignal.timeout(120_000),
     })
   } catch (fetchErr) {
     throw new Error(`Network error: ${fetchErr.message}`)
@@ -236,19 +210,14 @@ async function callAIBackend(task, agent) {
     throw new Error(`Could not read response: ${e.message}`)
   }
 
-  if (!rawText?.trim()) {
-    throw new Error('Server returned empty response.')
-  }
+  if (!rawText?.trim()) throw new Error('Server returned empty response')
 
   let data
   try { data = JSON.parse(rawText) } catch {
-    throw new Error(`Invalid JSON from server: "${rawText.slice(0, 100)}"`)
+    throw new Error(`Invalid JSON: "${rawText.slice(0, 100)}"`)
   }
 
-  if (!response.ok) {
-    throw new Error(data?.error || data?.result || `Server error ${response.status}`)
-  }
-
+  if (!response.ok) throw new Error(data?.error || `Error ${response.status}`)
   return data
 }
 

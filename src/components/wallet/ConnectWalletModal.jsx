@@ -5,9 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Wallet, AlertCircle, Loader2, ShieldCheck } from 'lucide-react'
 import { useLockBodyScroll } from '../../hooks/useLockBodyScroll'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Wallet SVG logos
-// ─────────────────────────────────────────────────────────────────────────────
 const WALLET_LOGOS = {
   pera: (
     <svg viewBox="0 0 40 40" fill="none" className="w-full h-full">
@@ -79,17 +76,13 @@ function getWalletLogo(walletId) {
 export function ConnectWalletModal({ isOpen, onClose }) {
   const { wallets, activeAccount } = useWallet()
 
-  // ── Scroll lock (Strict Mode safe) ────────────────────────────────────────
   useLockBodyScroll(isOpen)
 
-  // ── Stable onClose ref ────────────────────────────────────────────────────
-  // Prevents stale closures in effects without adding onClose to dep arrays
   const onCloseRef = useRef(onClose)
   useEffect(() => {
     onCloseRef.current = onClose
   })
 
-  // ── Auto-close when wallet connects ───────────────────────────────────────
   useEffect(() => {
     if (activeAccount && isOpen) {
       const t = setTimeout(() => onCloseRef.current(), 120)
@@ -97,7 +90,6 @@ export function ConnectWalletModal({ isOpen, onClose }) {
     }
   }, [activeAccount, isOpen])
 
-  // ── Escape key ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return
     const handler = (e) => {
@@ -107,23 +99,11 @@ export function ConnectWalletModal({ isOpen, onClose }) {
     return () => window.removeEventListener('keydown', handler)
   }, [isOpen])
 
-  // ── Portal target ─────────────────────────────────────────────────────────
   const portalTarget = document.getElementById('modal-root') || document.body
 
-  // ── Modal content ─────────────────────────────────────────────────────────
   const modalContent = (
     <AnimatePresence>
       {isOpen && (
-        /*
-         * ONE root element handles:
-         *  - full-screen coverage (fixed inset-0)
-         *  - backdrop blur + dim
-         *  - flex centering of the card
-         *  - click-outside-to-close
-         *
-         * This eliminates the z-index race between separate backdrop
-         * and wrapper elements.
-         */
         <motion.div
           key="modal-root-overlay"
           initial={{ opacity: 0 }}
@@ -138,9 +118,8 @@ export function ConnectWalletModal({ isOpen, onClose }) {
             backdropFilter: 'blur(6px)',
             WebkitBackdropFilter: 'blur(6px)',
           }}
-          onClick={onClose} // click outside = close
+          onClick={onClose}
         >
-          {/* ── Modal card ── */}
           <motion.div
             key="modal-card"
             initial={{ opacity: 0, scale: 0.94, y: 20 }}
@@ -152,14 +131,12 @@ export function ConnectWalletModal({ isOpen, onClose }) {
               damping: 26,
               opacity: { duration: 0.2 },
             }}
-            // Stop click propagation so clicking card doesn't close modal
             onClick={(e) => e.stopPropagation()}
             className="
               rounded-2xl overflow-hidden
               border border-white/[0.08]
               shadow-2xl shadow-black/60
             "
-            // Inline bg so it's not affected by any Tailwind purge issues
             style={{
               width: '100%',
               maxWidth: '460px',
@@ -173,7 +150,6 @@ export function ConnectWalletModal({ isOpen, onClose }) {
               boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
             }}
           >
-            {/* Top purple glow line */}
             <div
               style={{
                 position: 'absolute',

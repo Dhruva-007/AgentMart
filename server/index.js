@@ -10,7 +10,7 @@ config({ path: resolve(__dirname, '../.env') })
 config({ path: resolve(__dirname, '.env') })
 
 const app  = express()
-const PORT = process.env.PORT || 3001  
+const PORT = process.env.PORT || 3001
 
 const ALGOD_SERVER       = 'https://testnet-api.algonode.cloud'
 const APP_ID             = parseInt(process.env.APP_ID || '0', 10) || 0
@@ -21,12 +21,7 @@ const GROQ_MODEL         = process.env.GROQ_MODEL         || 'llama-3.1-8b-insta
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
 const OPENROUTER_MODEL   = process.env.OPENROUTER_MODEL   || 'mistralai/mistral-7b-instruct:free'
 
-const ALLOWED_ORIGINS = [
-  'http://localhost:5173',
-  'http://localhost:4173',
-  'http://127.0.0.1:5173',
-  process.env.FRONTEND_URL || '',
-].filter(Boolean)
+const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '')
 
 console.log('\n🔧 Config:')
 console.log('  APP_ID           :', APP_ID || 'NOT SET')
@@ -34,21 +29,31 @@ console.log('  RECEIVER_ADDRESS :', RECEIVER_ADDRESS ? RECEIVER_ADDRESS.slice(0,
 console.log('  DEPLOYER_MNEMONIC:', DEPLOYER_MNEMONIC ? '*****(set)' : 'NOT SET')
 console.log('  GROQ_API_KEY     :', GROQ_API_KEY ? '*****(set)' : 'NOT SET')
 console.log('  OPENROUTER_KEY   :', OPENROUTER_API_KEY ? '*****(set)' : 'NOT SET')
-console.log('  ALLOWED_ORIGINS  :', ALLOWED_ORIGINS)
+console.log('  FRONTEND_URL     :', FRONTEND_URL || 'NOT SET')
 
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true)
-    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true)
-    if (process.env.NODE_ENV !== 'production') return callback(null, true)
-    callback(new Error(`CORS blocked: ${origin}`))
-  },
-  methods      : ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials  : false,
-}))
+app.use((req, res, next) => {
+  const origin = req.headers.origin || ''
 
-app.options('*', cors())
+  const isLocalhost  = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+  const isVercel     = /^https:\/\/.*\.vercel\.app$/.test(origin)
+  const isFrontend   = FRONTEND_URL && origin === FRONTEND_URL
+
+  const allowed = !origin || isLocalhost || isVercel || isFrontend
+
+  if (allowed) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*')
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  res.setHeader('Access-Control-Max-Age', '86400')
+
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end()
+  }
+
+  next()
+})
 
 app.use(express.json({ limit: '2mb' }))
 
@@ -114,7 +119,12 @@ async function callGroq(prompt) {
     const output = data?.choices?.[0]?.message?.content?.trim()
     if (!output) throw new Error('Groq returned empty content')
 
-    return { output, provider: 'groq', model: GROQ_MODEL, tokenCount: data?.usage?.completion_tokens || null }
+    return {
+      output,
+      provider  : 'groq',
+      model     : GROQ_MODEL,
+      tokenCount: data?.usage?.completion_tokens || null,
+    }
   } finally {
     clearTimeout(timer)
   }
@@ -153,7 +163,12 @@ async function callOpenRouter(prompt) {
     const output = data?.choices?.[0]?.message?.content?.trim()
     if (!output) throw new Error('OpenRouter returned empty content')
 
-    return { output, provider: 'openrouter', model: OPENROUTER_MODEL, tokenCount: data?.usage?.completion_tokens || null }
+    return {
+      output,
+      provider  : 'openrouter',
+      model     : OPENROUTER_MODEL,
+      tokenCount: data?.usage?.completion_tokens || null,
+    }
   } finally {
     clearTimeout(timer)
   }

@@ -10,16 +10,23 @@ config({ path: resolve(__dirname, '../.env') })
 config({ path: resolve(__dirname, '.env') })
 
 const app  = express()
-const PORT = 3001
+const PORT = process.env.PORT || 3001  
 
-const ALGOD_SERVER      = 'https://testnet-api.algonode.cloud'
-const APP_ID            = parseInt(process.env.APP_ID || '0', 10) || 0
-const DEPLOYER_MNEMONIC = process.env.DEPLOYER_MNEMONIC || ''
-const RECEIVER_ADDRESS  = process.env.RECEIVER_ADDRESS  || ''
-const GROQ_API_KEY      = process.env.GROQ_API_KEY      || ''
-const GROQ_MODEL        = process.env.GROQ_MODEL        || 'llama-3.1-8b-instant'
+const ALGOD_SERVER       = 'https://testnet-api.algonode.cloud'
+const APP_ID             = parseInt(process.env.APP_ID || '0', 10) || 0
+const DEPLOYER_MNEMONIC  = process.env.DEPLOYER_MNEMONIC  || ''
+const RECEIVER_ADDRESS   = process.env.RECEIVER_ADDRESS   || ''
+const GROQ_API_KEY       = process.env.GROQ_API_KEY       || ''
+const GROQ_MODEL         = process.env.GROQ_MODEL         || 'llama-3.1-8b-instant'
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || ''
 const OPENROUTER_MODEL   = process.env.OPENROUTER_MODEL   || 'mistralai/mistral-7b-instruct:free'
+
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://localhost:4173',
+  'http://127.0.0.1:5173',
+  process.env.FRONTEND_URL || '',
+].filter(Boolean)
 
 console.log('\n🔧 Config:')
 console.log('  APP_ID           :', APP_ID || 'NOT SET')
@@ -27,16 +34,22 @@ console.log('  RECEIVER_ADDRESS :', RECEIVER_ADDRESS ? RECEIVER_ADDRESS.slice(0,
 console.log('  DEPLOYER_MNEMONIC:', DEPLOYER_MNEMONIC ? '*****(set)' : 'NOT SET')
 console.log('  GROQ_API_KEY     :', GROQ_API_KEY ? '*****(set)' : 'NOT SET')
 console.log('  OPENROUTER_KEY   :', OPENROUTER_API_KEY ? '*****(set)' : 'NOT SET')
+console.log('  ALLOWED_ORIGINS  :', ALLOWED_ORIGINS)
 
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'http://localhost:4173',
-    'http://127.0.0.1:5173',
-  ],
-  methods    : ['GET', 'POST'],
-  allowedHeaders: ['Content-Type'],
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true)
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true)
+    if (process.env.NODE_ENV !== 'production') return callback(null, true)
+    callback(new Error(`CORS blocked: ${origin}`))
+  },
+  methods      : ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials  : false,
 }))
+
+app.options('*', cors())
+
 app.use(express.json({ limit: '2mb' }))
 
 process.on('unhandledRejection', (reason) => {
@@ -56,7 +69,7 @@ function safeJson(res, status, payload) {
       if (!res.headersSent) {
         res.status(500).end('{"success":false,"error":"Response write failed"}')
       }
-    } catch
+    } catch (_) {}
   }
 }
 
@@ -183,8 +196,7 @@ app.post('/api/execute', async (req, res) => {
       return safeJson(res, 400, { success: false, error: 'task must be at least 3 characters' })
     }
 
-    const cleanTask = task.trim().slice(0, 1000)
-
+    const cleanTask     = task.trim().slice(0, 1000)
     const agentTemplate = agent?.promptTemplate || agent?.systemPrompt || ''
     const agentFormat   = agent?.outputFormat   || ''
 
@@ -481,15 +493,15 @@ app.post('/api/release', async (req, res) => {
         })
       }
 
-      const signed      = releaseTxn.signTxn(account.sk)
+      const signed       = releaseTxn.signTxn(account.sk)
       const submitResult = await client.sendRawTransaction(signed).do()
-      const rTxId       = submitResult?.txId || submitResult?.txid || submitResult?.['tx-id']
+      const rTxId        = submitResult?.txId || submitResult?.txid || submitResult?.['tx-id']
 
       if (rTxId) {
-        const conf  = await algosdk.waitForConfirmation(client, rTxId, 10)
-        releaseTxId = rTxId
+        const conf   = await algosdk.waitForConfirmation(client, rTxId, 10)
+        releaseTxId  = rTxId
         releaseRound = conf['confirmed-round'] ? Number(conf['confirmed-round']) : null
-        method      = 'contract-release'
+        method       = 'contract-release'
         console.log('[/api/release] ✅ Contract release:', releaseTxId)
       }
     } catch (contractErr) {

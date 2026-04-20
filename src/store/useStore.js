@@ -1,11 +1,13 @@
 import { create } from 'zustand'
 import { getCreatorWallet } from './useAgentStore.js'
 
+const API_BASE = import.meta.env.VITE_API_URL || ''
+
 const agentSteps = [
   { id: 1, title: 'Task Received',      description: 'Parsing and validating your request...',           icon: 'inbox',        duration: 800  },
   { id: 2, title: 'Research Agent',     description: 'Scanning knowledge base and gathering context...',  icon: 'search',       duration: 1200 },
   { id: 3, title: 'Payment Agent',      description: 'Initiating escrow deposit on Algorand...',          icon: 'shield-check', duration: 0, isDynamic: true },
-  { id: 4, title: 'Content Agent',      description: 'Generating output via mistral:7b-instruct...',      icon: 'sparkles',     duration: 0, isDynamic: true },
+  { id: 4, title: 'Content Agent',      description: 'Generating output via AI...',                       icon: 'sparkles',     duration: 0, isDynamic: true },
   { id: 5, title: 'Verification Agent', description: 'Validating output and recording on Algorand...',    icon: 'brain',        duration: 1000 },
 ]
 
@@ -34,7 +36,7 @@ const useStore = create((set, get) => ({
 
   checkBackendHealth: async () => {
     try {
-      const res  = await fetch('/api/health', { signal: AbortSignal.timeout(5000) })
+      const res  = await fetch(`${API_BASE}/api/health`, { signal: AbortSignal.timeout(5000) })
       const data = await res.json()
       set({ backendOnline: data.status === 'ok' })
       return data
@@ -192,10 +194,11 @@ const useStore = create((set, get) => ({
   clearError: () => set({ processingError: null }),
 }))
 
+
 async function callAIBackend(task, agent) {
   let response
   try {
-    response = await fetch('/api/execute', {
+    response = await fetch(`${API_BASE}/api/execute`, {
       method : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body   : JSON.stringify({ task, agent }),
@@ -223,7 +226,7 @@ async function callAIBackend(task, agent) {
 
 async function triggerBackendRelease(txId, creatorWallet) {
   console.log('[triggerBackendRelease] txId:', txId, 'creatorWallet:', creatorWallet)
-  const response = await fetch('/api/release', {
+  const response = await fetch(`${API_BASE}/api/release`, {
     method : 'POST',
     headers: { 'Content-Type': 'application/json' },
     body   : JSON.stringify({ txId, creatorWallet }),

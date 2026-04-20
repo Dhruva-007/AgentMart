@@ -1,3 +1,5 @@
+const API_BASE = import.meta.env.VITE_API_URL || ''
+
 export const ALGOD_SERVER  = import.meta.env.VITE_ALGOD_SERVER    || 'https://testnet-api.algonode.cloud'
 export const APP_ID        = parseInt(import.meta.env.VITE_APP_ID  || '0', 10) || 0
 export const RECEIVER_ADDR = import.meta.env.VITE_RECEIVER_ADDRESS || ''
@@ -8,6 +10,7 @@ console.log('[algorand.js] Config loaded:')
 console.log('  APP_ID        :', APP_ID)
 console.log('  RECEIVER_ADDR :', RECEIVER_ADDR ? RECEIVER_ADDR.slice(0, 10) + '...' : 'NOT SET')
 console.log('  Contract ready:', APP_ID > 0 && RECEIVER_ADDR.length > 50)
+console.log('  API_BASE      :', API_BASE || '(local proxy)')
 
 export function isContractConfigured() {
   const ok = APP_ID > 0 && RECEIVER_ADDR.length > 50
@@ -32,7 +35,7 @@ export async function buildDepositTxnGroup({
 
   let response
   try {
-    response = await fetch('/api/build-deposit', {
+    response = await fetch(`${API_BASE}/api/build-deposit`, {
       method : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body   : JSON.stringify({
@@ -117,7 +120,7 @@ export async function submitSignedGroup(signedTxns) {
 
   let response
   try {
-    response = await fetch('/api/submit-deposit', {
+    response = await fetch(`${API_BASE}/api/submit-deposit`, {
       method : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body   : JSON.stringify({ signedTxns: base64Txns }),
